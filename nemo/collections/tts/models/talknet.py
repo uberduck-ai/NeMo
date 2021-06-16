@@ -339,6 +339,31 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
         mel = self(tokens, text_len, durs, f0)
 
         return mel
+    
+    def force_spectrogram(
+        self, tokens: torch.Tensor, durs: torch.Tensor, f0: torch.Tensor, **kwargs
+    ) -> torch.Tensor:
+        if self.blanking:
+            tokens = [
+                AudioToCharWithDursF0Dataset.interleave(
+                    x=torch.empty(len(t) + 1, dtype=torch.long, device=t.device).fill_(
+                        self.vocab.blank
+                    ),
+                    y=t,
+                )
+                for t in tokens
+            ]
+            tokens = AudioToCharWithDursF0Dataset.merge(
+                tokens, value=self.vocab.pad, dtype=torch.long
+            )
+
+        text_len = torch.tensor(tokens.shape[-1], dtype=torch.long).unsqueeze(0)
+        durs_len = torch.tensor(durs.shape[-1], dtype=torch.long).unsqueeze(0)
+        assert text_len == durs_len
+
+        # Spect
+        mel = self(tokens, text_len, durs, f0)
+        return mel
 
     def forward_for_export(self, tokens: torch.Tensor, text_len: torch.Tensor):
         durs = self._durs_model(tokens, text_len)
