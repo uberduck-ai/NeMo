@@ -315,7 +315,7 @@ class FastPitchModel(SpectrogramGenerator, Exportable):
         self.log("v_dur_loss", dur_loss)
         self.log("v_pitch_loss", pitch_loss)
 
-        _, _, _, _, spec_target, spec_predict = outputs[0].values()
+        """_, _, _, _, spec_target, spec_predict = outputs[0].values()
         self.tb_logger.add_image(
             "val_mel_target",
             plot_spectrogram_to_numpy(spec_target[0].data.cpu().numpy()),
@@ -326,7 +326,7 @@ class FastPitchModel(SpectrogramGenerator, Exportable):
         self.tb_logger.add_image(
             "val_mel_predicted", plot_spectrogram_to_numpy(spec_predict.T), self.global_step, dataformats="HWC",
         )
-        self.log_train_images = True
+        self.log_train_images = True"""
 
     def __setup_dataloader_from_config(self, cfg, shuffle_should_be: bool = True, name: str = "train"):
         if "dataset" not in cfg or not isinstance(cfg.dataset, DictConfig):
