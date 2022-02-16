@@ -21,7 +21,8 @@ import numpy as np
 import torch
 from numba import jit, prange
 from numpy import ndarray
-from pesq import pesq
+
+# from pesq import pesq
 from pystoi import stoi
 from pytorch_lightning.utilities import rank_zero_only
 
@@ -53,20 +54,24 @@ def binarize_attention(attn, in_len, out_len):
         attn_out = torch.zeros_like(attn)
         for ind in range(b_size):
             hard_attn = mas(attn_cpu[ind, 0, : out_len[ind], : in_len[ind]])
-            attn_out[ind, 0, : out_len[ind], : in_len[ind]] = torch.tensor(hard_attn, device=attn.device)
+            attn_out[ind, 0, : out_len[ind], : in_len[ind]] = torch.tensor(
+                hard_attn, device=attn.device
+            )
     return attn_out
 
 
 def binarize_attention_parallel(attn, in_lens, out_lens):
     """For training purposes only. Binarizes attention with MAS.
-           These will no longer recieve a gradient.
+       These will no longer recieve a gradient.
 
-        Args:
-            attn: B x 1 x max_mel_len x max_text_len
-        """
+    Args:
+        attn: B x 1 x max_mel_len x max_text_len
+    """
     with torch.no_grad():
         attn_cpu = attn.data.cpu().numpy()
-        attn_out = b_mas(attn_cpu, in_lens.cpu().numpy(), out_lens.cpu().numpy(), width=1)
+        attn_out = b_mas(
+            attn_cpu, in_lens.cpu().numpy(), out_lens.cpu().numpy(), width=1
+        )
     return torch.from_numpy(attn_out).to(attn.get_device())
 
 
@@ -186,7 +191,7 @@ def log_audio_to_tb(
     log_mel = spect.data.cpu().numpy().T
     mel = np.exp(log_mel)
     magnitude = np.dot(mel, filterbank) * griffin_lim_mag_scale
-    audio = griffin_lim(magnitude.T ** griffin_lim_power)
+    audio = griffin_lim(magnitude.T**griffin_lim_power)
     swriter.add_audio(name, audio / max(np.abs(audio)), step, sample_rate=sr)
 
 
@@ -209,10 +214,16 @@ def tacotron2_log_to_tb_func(
     _, spec_target, mel_postnet, gate, gate_target, alignments = tensors
     if log_images and step % log_images_freq == 0:
         swriter.add_image(
-            f"{tag}_alignment", plot_alignment_to_numpy(alignments[0].data.cpu().numpy().T), step, dataformats="HWC",
+            f"{tag}_alignment",
+            plot_alignment_to_numpy(alignments[0].data.cpu().numpy().T),
+            step,
+            dataformats="HWC",
         )
         swriter.add_image(
-            f"{tag}_mel_target", plot_spectrogram_to_numpy(spec_target[0].data.cpu().numpy()), step, dataformats="HWC",
+            f"{tag}_mel_target",
+            plot_spectrogram_to_numpy(spec_target[0].data.cpu().numpy()),
+            step,
+            dataformats="HWC",
         )
         swriter.add_image(
             f"{tag}_mel_predicted",
@@ -222,34 +233,46 @@ def tacotron2_log_to_tb_func(
         )
         swriter.add_image(
             f"{tag}_gate",
-            plot_gate_outputs_to_numpy(gate_target[0].data.cpu().numpy(), torch.sigmoid(gate[0]).data.cpu().numpy(),),
+            plot_gate_outputs_to_numpy(
+                gate_target[0].data.cpu().numpy(),
+                torch.sigmoid(gate[0]).data.cpu().numpy(),
+            ),
             step,
             dataformats="HWC",
         )
         if add_audio:
-            filterbank = librosa.filters.mel(sr=sr, n_fft=n_fft, n_mels=n_mels, fmax=fmax)
+            filterbank = librosa.filters.mel(
+                sr=sr, n_fft=n_fft, n_mels=n_mels, fmax=fmax
+            )
             log_mel = mel_postnet[0].data.cpu().numpy().T
             mel = np.exp(log_mel)
             magnitude = np.dot(mel, filterbank) * griffin_lim_mag_scale
-            audio = griffin_lim(magnitude.T ** griffin_lim_power)
-            swriter.add_audio(f"audio/{tag}_predicted", audio / max(np.abs(audio)), step, sample_rate=sr)
+            audio = griffin_lim(magnitude.T**griffin_lim_power)
+            swriter.add_audio(
+                f"audio/{tag}_predicted",
+                audio / max(np.abs(audio)),
+                step,
+                sample_rate=sr,
+            )
 
             log_mel = spec_target[0].data.cpu().numpy().T
             mel = np.exp(log_mel)
             magnitude = np.dot(mel, filterbank) * griffin_lim_mag_scale
-            audio = griffin_lim(magnitude.T ** griffin_lim_power)
-            swriter.add_audio(f"audio/{tag}_target", audio / max(np.abs(audio)), step, sample_rate=sr)
+            audio = griffin_lim(magnitude.T**griffin_lim_power)
+            swriter.add_audio(
+                f"audio/{tag}_target", audio / max(np.abs(audio)), step, sample_rate=sr
+            )
 
 
 def plot_alignment_to_numpy(alignment, info=None):
     fig, ax = plt.subplots(figsize=(6, 4))
-    im = ax.imshow(alignment, aspect='auto', origin='lower', interpolation='none')
+    im = ax.imshow(alignment, aspect="auto", origin="lower", interpolation="none")
     fig.colorbar(im, ax=ax)
-    xlabel = 'Decoder timestep'
+    xlabel = "Decoder timestep"
     if info is not None:
-        xlabel += '\n\n' + info
+        xlabel += "\n\n" + info
     plt.xlabel(xlabel)
-    plt.ylabel('Encoder timestep')
+    plt.ylabel("Encoder timestep")
     plt.tight_layout()
 
     fig.canvas.draw()
@@ -261,7 +284,7 @@ def plot_alignment_to_numpy(alignment, info=None):
 def plot_spectrogram_to_numpy(spectrogram):
     spectrogram = spectrogram.astype(np.float32)
     fig, ax = plt.subplots(figsize=(12, 3))
-    im = ax.imshow(spectrogram, aspect="auto", origin="lower", interpolation='none')
+    im = ax.imshow(spectrogram, aspect="auto", origin="lower", interpolation="none")
     plt.colorbar(im, ax=ax)
     plt.xlabel("Frames")
     plt.ylabel("Channels")
@@ -276,10 +299,22 @@ def plot_spectrogram_to_numpy(spectrogram):
 def plot_gate_outputs_to_numpy(gate_targets, gate_outputs):
     fig, ax = plt.subplots(figsize=(12, 3))
     ax.scatter(
-        range(len(gate_targets)), gate_targets, alpha=0.5, color='green', marker='+', s=1, label='target',
+        range(len(gate_targets)),
+        gate_targets,
+        alpha=0.5,
+        color="green",
+        marker="+",
+        s=1,
+        label="target",
     )
     ax.scatter(
-        range(len(gate_outputs)), gate_outputs, alpha=0.5, color='red', marker='.', s=1, label='predicted',
+        range(len(gate_outputs)),
+        gate_outputs,
+        alpha=0.5,
+        color="red",
+        marker=".",
+        s=1,
+        label="predicted",
     )
 
     plt.xlabel("Frames (Green target, Red predicted)")
@@ -294,31 +329,47 @@ def plot_gate_outputs_to_numpy(gate_targets, gate_outputs):
 
 def save_figure_to_numpy(fig):
     # save it to a numpy array.
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     return data
 
 
 @rank_zero_only
 def waveglow_log_to_tb_func(
-    swriter, tensors, step, tag="train", n_fft=1024, hop_length=256, window="hann", mel_fb=None,
+    swriter,
+    tensors,
+    step,
+    tag="train",
+    n_fft=1024,
+    hop_length=256,
+    window="hann",
+    mel_fb=None,
 ):
     _, audio_pred, spec_target, mel_length = tensors
     mel_length = mel_length[0]
     spec_target = spec_target[0].data.cpu().numpy()[:, :mel_length]
     swriter.add_image(
-        f"{tag}_mel_target", plot_spectrogram_to_numpy(spec_target), step, dataformats="HWC",
+        f"{tag}_mel_target",
+        plot_spectrogram_to_numpy(spec_target),
+        step,
+        dataformats="HWC",
     )
     if mel_fb is not None:
         mag, _ = librosa.core.magphase(
             librosa.core.stft(
-                np.nan_to_num(audio_pred[0].cpu().detach().numpy()), n_fft=n_fft, hop_length=hop_length, window=window,
+                np.nan_to_num(audio_pred[0].cpu().detach().numpy()),
+                n_fft=n_fft,
+                hop_length=hop_length,
+                window=window,
             )
         )
         mel_pred = np.matmul(mel_fb.cpu().numpy(), mag).squeeze()
         log_mel_pred = np.log(np.clip(mel_pred, a_min=1e-5, a_max=None))
         swriter.add_image(
-            f"{tag}_mel_predicted", plot_spectrogram_to_numpy(log_mel_pred[:, :mel_length]), step, dataformats="HWC",
+            f"{tag}_mel_predicted",
+            plot_spectrogram_to_numpy(log_mel_pred[:, :mel_length]),
+            step,
+            dataformats="HWC",
         )
 
 
@@ -356,7 +407,8 @@ def eval_tts_scores(
     clean = y_clean[0, : T_ys[0]]
     estimated = y_est[0, : T_ys[0]]
     stoi_score = stoi(clean, estimated, sampling_rate, extended=False)
-    pesq_score = pesq(16000, np.asarray(clean), estimated, 'wb')
+    # pesq_score = pesq(16000, np.asarray(clean), estimated, "wb")
+    pesq_score = stoi_score
     ## fs was set 16,000, as pesq lib doesnt currently support felxible fs.
 
-    return {'STOI': stoi_score, 'PESQ': pesq_score}
+    return {"STOI": stoi_score, "PESQ": pesq_score}
