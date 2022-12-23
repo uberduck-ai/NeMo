@@ -30,8 +30,8 @@ from omegaconf import DictConfig, OmegaConf
 
 import nemo
 from nemo.core.neural_types import NeuralType, NeuralTypeComparisonResult
-from nemo.utils import logging
-from nemo.utils.cloud import maybe_download_from_cloud
+# from nemo.utils import logging
+# from nemo.utils.cloud import maybe_download_from_cloud
 from nemo.utils.model_utils import import_class_by_path, maybe_update_config_version
 
 __all__ = ['Typing', 'FileIO', 'Model', 'Serialization', 'typecheck']
