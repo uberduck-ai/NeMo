@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf, open_dict
-from pytorch_lightning.loggers import LoggerCollection, TensorBoardLogger
+# from pytorch_lightning.loggers import LoggerCollection, TensorBoardLogger
 
 from nemo.collections.common.parts.preprocessing import parsers
 from nemo.collections.tts.helpers.helpers import plot_spectrogram_to_numpy

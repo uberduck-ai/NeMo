@@ -19,7 +19,7 @@ import torch
 from hydra.utils import instantiate
 from omegaconf import MISSING, DictConfig, OmegaConf, open_dict
 from pystoi import stoi
-from pytorch_lightning.loggers import LoggerCollection, TensorBoardLogger
+# from pytorch_lightning.loggers import LoggerCollection, TensorBoardLogger
 
 from nemo.collections.tts.helpers.helpers import OperationMode, waveglow_log_to_tb_func
 from nemo.collections.tts.losses.uniglowloss import UniGlowLoss
