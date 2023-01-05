@@ -43,7 +43,7 @@ from nemo.utils.get_rank import is_global_rank_zero
 _MODEL_CONFIG_YAML = "model_config.yaml"
 _MODEL_WEIGHTS = "model_weights.ckpt"
 
-__all__ = ['ModelPT']
+__all__ = ["ModelPT"]
 
 """
 Internal global flags that determine core functionality of ModelPT.
@@ -72,7 +72,7 @@ class ModelPT(LightningModule, Model):
     Interface for Pytorch-lightning based NeMo models
     """
 
-    def __init__(self, cfg: DictConfig, trainer: Trainer = None):
+    def __init__(self, cfg: DictConfig, trainer: Trainer = Trainer()):
         """
         Base class from which all NeMo models should inherit
 
@@ -99,10 +99,12 @@ class ModelPT(LightningModule, Model):
         # Convert config to support Hydra 1.0+ instantiation
         cfg = model_utils.maybe_update_config_version(cfg)
 
-        if 'target' not in cfg:
+        if "target" not in cfg:
             # This is for Jarvis service.
             OmegaConf.set_struct(cfg, False)
-            cfg.target = "{0}.{1}".format(self.__class__.__module__, self.__class__.__name__)
+            cfg.target = "{0}.{1}".format(
+                self.__class__.__module__, self.__class__.__name__
+            )
             OmegaConf.set_struct(cfg, True)
 
         self._cfg = cfg
@@ -113,6 +115,9 @@ class ModelPT(LightningModule, Model):
         self._test_dl = None
         self._optimizer = None
         self._scheduler = None
+        # import pdb
+
+        # pdb.set_trace()
         self.trainer = trainer  # reference required for self.*_rank
         self._trainer = self.trainer  # alias for backward compatibility
 
@@ -124,31 +129,31 @@ class ModelPT(LightningModule, Model):
             app_state.device_id = torch.cuda.current_device()
 
         if self._cfg is not None and not self._is_model_being_restored():
-            if 'train_ds' in self._cfg and self._cfg.train_ds is not None:
+            if "train_ds" in self._cfg and self._cfg.train_ds is not None:
                 self.setup_training_data(self._cfg.train_ds)
 
-            if 'validation_ds' in self._cfg and self._cfg.validation_ds is not None:
+            if "validation_ds" in self._cfg and self._cfg.validation_ds is not None:
                 self.setup_multiple_validation_data(val_data_config=None)
 
-            if 'test_ds' in self._cfg and self._cfg.test_ds is not None:
+            if "test_ds" in self._cfg and self._cfg.test_ds is not None:
                 self.setup_multiple_test_data(test_data_config=None)
 
         else:
-            if 'train_ds' in self._cfg and self._cfg.train_ds is not None:
+            if "train_ds" in self._cfg and self._cfg.train_ds is not None:
                 logging.warning(
                     f"If you intend to do training or fine-tuning, please call the ModelPT.setup_training_data() method "
                     f"and provide a valid configuration file to setup the train data loader.\n"
                     f"Train config : \n{OmegaConf.to_yaml(self._cfg.train_ds)}"
                 )
 
-            if 'validation_ds' in self._cfg and self._cfg.validation_ds is not None:
+            if "validation_ds" in self._cfg and self._cfg.validation_ds is not None:
                 logging.warning(
                     f"If you intend to do validation, please call the ModelPT.setup_validation_data() or ModelPT.setup_multiple_validation_data() method "
                     f"and provide a valid configuration file to setup the validation data loader(s). \n"
                     f"Validation config : \n{OmegaConf.to_yaml(self._cfg.validation_ds)}"
                 )
 
-            if 'test_ds' in self._cfg and self._cfg.test_ds is not None:
+            if "test_ds" in self._cfg and self._cfg.test_ds is not None:
                 logging.warning(
                     f"Please call the ModelPT.setup_test_data() or ModelPT.setup_multiple_test_data() method "
                     f"and provide a valid configuration file to setup the test data loader(s).\n"
@@ -158,31 +163,33 @@ class ModelPT(LightningModule, Model):
         # ModelPT wrappers over subclass implementations
         self.training_step = model_utils.wrap_training_step(self.training_step)
 
-    def register_artifact(self, config_path: str, src: str, verify_src_exists: bool = True):
-        """ Register model artifacts with this function. These artifacts (files) will be included inside .nemo file
-            when model.save_to("mymodel.nemo") is called.        
+    def register_artifact(
+        self, config_path: str, src: str, verify_src_exists: bool = True
+    ):
+        """Register model artifacts with this function. These artifacts (files) will be included inside .nemo file
+        when model.save_to("mymodel.nemo") is called.
 
-            How it works:
-            1. It always returns existing absolute path which can be used during Model constructor call
-                EXCEPTION: src is None or "" in which case nothing will be done and src will be returned
-            2. It will add (config_path, model_utils.ArtifactItem()) pair to self.artifacts
+        How it works:
+        1. It always returns existing absolute path which can be used during Model constructor call
+            EXCEPTION: src is None or "" in which case nothing will be done and src will be returned
+        2. It will add (config_path, model_utils.ArtifactItem()) pair to self.artifacts
 
-            If "src" is local existing path, then it will be returned in absolute path form.
-            elif "src" starts with "nemo_file:unique_artifact_name":
-                .nemo will be untarred to a temporary folder location and an actual existing path will be returned
-            else an error will be raised.
+        If "src" is local existing path, then it will be returned in absolute path form.
+        elif "src" starts with "nemo_file:unique_artifact_name":
+            .nemo will be untarred to a temporary folder location and an actual existing path will be returned
+        else an error will be raised.
 
-            WARNING: use .register_artifact calls in your models' constructors.
-            The returned path is not guaranteed to exist after you have exited your model's constuctor.
+        WARNING: use .register_artifact calls in your models' constructors.
+        The returned path is not guaranteed to exist after you have exited your model's constuctor.
 
-            Args:
-                config_path (str): Artifact key. Usually corresponds to the model config.
-                src (str): Path to artifact.
-                verify_src_exists (bool): If set to False, then the artifact is optional and register_artifact will return None even if 
-                                          src is not found. Defaults to True.
+        Args:
+            config_path (str): Artifact key. Usually corresponds to the model config.
+            src (str): Path to artifact.
+            verify_src_exists (bool): If set to False, then the artifact is optional and register_artifact will return None even if
+                                      src is not found. Defaults to True.
 
-            Returns:
-                str: If src is not None or empty it always returns absolute path which is guaranteed to exists during model instnce life
+        Returns:
+            str: If src is not None or empty it always returns absolute path which is guaranteed to exists during model instnce life
         """
 
         app_state = AppState()
@@ -190,7 +197,7 @@ class ModelPT(LightningModule, Model):
         if src is None or src == "":
             return src
 
-        if not hasattr(self, 'artifacts'):
+        if not hasattr(self, "artifacts"):
             self.artifacts = {}
 
         if self.artifacts is None:
@@ -208,7 +215,9 @@ class ModelPT(LightningModule, Model):
         # without its key having been overriden, this pathway will be used.
         src_obj_name = os.path.basename(src)
         if _NEMO_FILE_FOLDER is not None:
-            src_obj_path = os.path.abspath(os.path.join(_NEMO_FILE_FOLDER, src_obj_name))
+            src_obj_path = os.path.abspath(
+                os.path.join(_NEMO_FILE_FOLDER, src_obj_name)
+            )
         else:
             src_obj_path = src_obj_name
 
@@ -252,13 +261,17 @@ class ModelPT(LightningModule, Model):
         for conf_path, artiitem in self.artifacts.items():
             if artiitem.path_type == model_utils.ArtifactPathType.LOCAL_PATH:
                 if not os.path.exists(artiitem.path):
-                    raise FileNotFoundError(f"Artifact {conf_path} not found at location: {artiitem.path}")
+                    raise FileNotFoundError(
+                        f"Artifact {conf_path} not found at location: {artiitem.path}"
+                    )
 
                 # Generate new uniq artifact name and copy it to nemo_file_folder
                 # Note uuid.uuid4().hex is guaranteed to be 32 character long
                 artifact_base_name = os.path.basename(artiitem.path)
                 artifact_uniq_name = f"{uuid.uuid4().hex}_{artifact_base_name}"
-                shutil.copy2(artiitem.path, os.path.join(nemo_file_folder, artifact_uniq_name))
+                shutil.copy2(
+                    artiitem.path, os.path.join(nemo_file_folder, artifact_uniq_name)
+                )
 
                 # Update artifacts registry
                 artiitem.hashed_path = "nemo:" + artifact_uniq_name
@@ -269,7 +282,9 @@ class ModelPT(LightningModule, Model):
                 tarfile_artifacts.append((conf_path, artiitem))
 
             else:
-                raise ValueError(f"Directly referencing artifacts from other nemo files isn't supported yet")
+                raise ValueError(
+                    f"Directly referencing artifacts from other nemo files isn't supported yet"
+                )
 
         # Process current tarfile artifacts by unpacking the previous tarfile and extract the artifacts
         # that are currently required.
@@ -282,17 +297,23 @@ class ModelPT(LightningModule, Model):
             try:
                 # Step into the nemo archive to try and find the file
                 with tempfile.TemporaryDirectory() as archive_dir:
-                    self._unpack_nemo_file(path2file=model_metadata.restoration_path, out_folder=archive_dir)
+                    self._unpack_nemo_file(
+                        path2file=model_metadata.restoration_path,
+                        out_folder=archive_dir,
+                    )
                     os.chdir(archive_dir)
                     for conf_path, artiitem in tarfile_artifacts:
                         # Get basename and copy it to nemo_file_folder
-                        if 'nemo:' in artiitem.path:
-                            artifact_base_name = artiitem.path.split('nemo:')[1]
+                        if "nemo:" in artiitem.path:
+                            artifact_base_name = artiitem.path.split("nemo:")[1]
                         else:
                             artifact_base_name = os.path.basename(artiitem.path)
                         # no need to hash here as we are in tarfile_artifacts which are already hashed
                         artifact_uniq_name = artifact_base_name
-                        shutil.copy2(artifact_base_name, os.path.join(nemo_file_folder, artifact_uniq_name))
+                        shutil.copy2(
+                            artifact_base_name,
+                            os.path.join(nemo_file_folder, artifact_uniq_name),
+                        )
 
                         # Update artifacts registry
                         new_artiitem = model_utils.ArtifactItem()
@@ -311,7 +332,7 @@ class ModelPT(LightningModule, Model):
                     OmegaConf.update(conf, conf_path, item.path)
                 else:
                     OmegaConf.update(conf, conf_path, item.hashed_path)
-            with open(path2yaml_file, 'w') as fout:
+            with open(path2yaml_file, "w") as fout:
                 OmegaConf.save(config=conf, f=fout, resolve=True)
 
     def _default_save_to(self, save_path: str):
@@ -331,7 +352,7 @@ class ModelPT(LightningModule, Model):
             config_yaml = path.join(tmpdir, _MODEL_CONFIG_YAML)
             model_weights = path.join(tmpdir, _MODEL_WEIGHTS)
             self.to_config_file(path2yaml_file=config_yaml)
-            if hasattr(self, 'artifacts') and self.artifacts is not None:
+            if hasattr(self, "artifacts") and self.artifacts is not None:
                 self._handle_artifacts(nemo_file_folder=tmpdir)
                 # We should not update self._cfg here - the model can still be in use
                 self._update_artifact_paths(path2yaml_file=config_yaml)
@@ -394,9 +415,9 @@ class ModelPT(LightningModule, Model):
 
         if map_location is None:
             if torch.cuda.is_available():
-                map_location = torch.device('cuda')
+                map_location = torch.device("cuda")
             else:
-                map_location = torch.device('cpu')
+                map_location = torch.device("cpu")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
@@ -417,7 +438,7 @@ class ModelPT(LightningModule, Model):
                     conf = OmegaConf.to_container(conf, resolve=True)
                     conf = OmegaConf.create(conf)
                     # If override is top level config, extract just `model` from it
-                    if 'model' in conf:
+                    if "model" in conf:
                         conf = conf.model
 
                 if return_config:
@@ -426,7 +447,9 @@ class ModelPT(LightningModule, Model):
                     app_state = AppState()
                     if app_state.model_parallel_rank is not None:
                         model_weights = path.join(
-                            tmpdir, f'mp_rank_{app_state.model_parallel_rank:02}', _MODEL_WEIGHTS
+                            tmpdir,
+                            f"mp_rank_{app_state.model_parallel_rank:02}",
+                            _MODEL_WEIGHTS,
                         )
                     else:
                         model_weights = path.join(tmpdir, _MODEL_WEIGHTS)
@@ -434,9 +457,14 @@ class ModelPT(LightningModule, Model):
                     os.chdir(cwd)
                     instance = cls.from_config_dict(config=conf)
                     instance = instance.to(map_location)
-                    instance.load_state_dict(torch.load(model_weights, map_location=map_location), strict=strict)
+                    instance.load_state_dict(
+                        torch.load(model_weights, map_location=map_location),
+                        strict=strict,
+                    )
 
-                    logging.info(f'Model {instance.__class__.__name__} was successfully restored from {restore_path}.')
+                    logging.info(
+                        f"Model {instance.__class__.__name__} was successfully restored from {restore_path}."
+                    )
             finally:
                 cls._set_model_restore_state(is_being_restored=False)
                 os.chdir(cwd)
@@ -479,14 +507,18 @@ class ModelPT(LightningModule, Model):
             raise FileNotFoundError(f"Can't find {restore_path}")
 
         app_state.model_restore_path = os.path.abspath(os.path.expanduser(restore_path))
-        return cls._default_restore_from(restore_path, override_config_path, map_location, strict, return_config)
+        return cls._default_restore_from(
+            restore_path, override_config_path, map_location, strict, return_config
+        )
 
     @classmethod
     def load_from_checkpoint(
         cls,
         checkpoint_path: str,
         *args,
-        map_location: Optional[Union[Dict[str, str], str, torch.device, int, Callable]] = None,
+        map_location: Optional[
+            Union[Dict[str, str], str, torch.device, int, Callable]
+        ] = None,
         hparams_file: Optional[str] = None,
         strict: bool = True,
         **kwargs,
@@ -560,7 +592,7 @@ class ModelPT(LightningModule, Model):
         self._validation_dl = None  # type: torch.utils.data.DataLoader
 
         # preserve config
-        self._update_dataset_config(dataset_name='validation', config=val_data_config)
+        self._update_dataset_config(dataset_name="validation", config=val_data_config)
 
         try:
             self._multi_dataset_mode = True
@@ -569,8 +601,13 @@ class ModelPT(LightningModule, Model):
             self._multi_dataset_mode = False
 
         if self._validation_names is None:
-            if self._validation_dl is not None and type(self._validation_dl) in [list, tuple]:
-                self._validation_names = ['val_{}_'.format(idx) for idx in range(len(self._validation_dl))]
+            if self._validation_dl is not None and type(self._validation_dl) in [
+                list,
+                tuple,
+            ]:
+                self._validation_names = [
+                    "val_{}_".format(idx) for idx in range(len(self._validation_dl))
+                ]
 
     def setup_multiple_test_data(self, test_data_config: Union[DictConfig, Dict]):
         """
@@ -585,7 +622,7 @@ class ModelPT(LightningModule, Model):
         self._test_dl = None  # type: torch.utils.data.DataLoader
 
         # preserve config
-        self._update_dataset_config(dataset_name='test', config=test_data_config)
+        self._update_dataset_config(dataset_name="test", config=test_data_config)
 
         try:
             self._multi_dataset_mode = True
@@ -595,9 +632,13 @@ class ModelPT(LightningModule, Model):
 
         if self._test_names is None:
             if self._test_dl is not None and type(self._test_dl) in [list, tuple]:
-                self._test_names = ['test_{}_'.format(idx) for idx in range(len(self._test_dl))]
+                self._test_names = [
+                    "test_{}_".format(idx) for idx in range(len(self._test_dl))
+                ]
 
-    def setup_optimization(self, optim_config: Optional[Union[DictConfig, Dict]] = None):
+    def setup_optimization(
+        self, optim_config: Optional[Union[DictConfig, Dict]] = None
+    ):
         """
         Prepares an optimizer from a string name and its optional config parameters.
 
@@ -614,12 +655,14 @@ class ModelPT(LightningModule, Model):
         # If config was not explicitly passed to us
         if optim_config is None:
             # See if internal config has `optim` namespace
-            if self._cfg is not None and hasattr(self._cfg, 'optim'):
+            if self._cfg is not None and hasattr(self._cfg, "optim"):
                 optim_config = self._cfg.optim
 
         # If config is still None, or internal config has no Optim, return without instantiation
         if optim_config is None:
-            logging.info('No optimizer config provided, therefore no optimizer was created')
+            logging.info(
+                "No optimizer config provided, therefore no optimizer was created"
+            )
             return
 
         else:
@@ -628,7 +671,7 @@ class ModelPT(LightningModule, Model):
                 optim_config = OmegaConf.create(optim_config)
 
             # See if internal config has `optim` namespace before preservation
-            if self._cfg is not None and hasattr(self._cfg, 'optim'):
+            if self._cfg is not None and hasattr(self._cfg, "optim"):
                 if self._cfg.optim is None:
                     self._cfg.optim = copy.deepcopy(optim_config)
                 else:
@@ -640,30 +683,44 @@ class ModelPT(LightningModule, Model):
             optim_config = OmegaConf.to_container(optim_config, resolve=True)
 
         if self._trainer is None:
-            logging.warning(f"Trainer wasn't specified in model constructor. Make sure that you really wanted it.")
+            logging.warning(
+                f"Trainer wasn't specified in model constructor. Make sure that you really wanted it."
+            )
 
-        if 'sched' in optim_config and self._trainer is not None:
+        if "sched" in optim_config and self._trainer is not None:
             if not isinstance(self._trainer.accumulate_grad_batches, int):
-                raise ValueError("We do not currently support gradient acculumation that is not an integer.")
+                raise ValueError(
+                    "We do not currently support gradient acculumation that is not an integer."
+                )
             if self._trainer.max_steps is None:
                 # Store information needed to calculate max_steps
-                optim_config['sched']['t_max_epochs'] = self._trainer.max_epochs
-                optim_config['sched']['t_accumulate_grad_batches'] = self._trainer.accumulate_grad_batches
-                optim_config['sched']['t_limit_train_batches'] = self._trainer.limit_train_batches
+                optim_config["sched"]["t_max_epochs"] = self._trainer.max_epochs
+                optim_config["sched"][
+                    "t_accumulate_grad_batches"
+                ] = self._trainer.accumulate_grad_batches
+                optim_config["sched"][
+                    "t_limit_train_batches"
+                ] = self._trainer.limit_train_batches
                 if self._trainer.distributed_backend is None:
-                    optim_config['sched']['t_num_workers'] = self._trainer.num_gpus or 1
+                    optim_config["sched"]["t_num_workers"] = self._trainer.num_gpus or 1
                 elif self._trainer.distributed_backend == "ddp_cpu":
-                    optim_config['sched']['t_num_workers'] = self._trainer.num_processes * self._trainer.num_nodes
+                    optim_config["sched"]["t_num_workers"] = (
+                        self._trainer.num_processes * self._trainer.num_nodes
+                    )
                 elif self._trainer.distributed_backend == "ddp":
-                    optim_config['sched']['t_num_workers'] = self._trainer.num_gpus * self._trainer.num_nodes
+                    optim_config["sched"]["t_num_workers"] = (
+                        self._trainer.num_gpus * self._trainer.num_nodes
+                    )
                 else:
                     logging.warning(
                         f"The lightning trainer received accelerator: {self._trainer.distributed_backend}. We "
                         "recommend to use 'ddp' instead."
                     )
-                    optim_config['sched']['t_num_workers'] = self._trainer.num_gpus * self._trainer.num_nodes
+                    optim_config["sched"]["t_num_workers"] = (
+                        self._trainer.num_gpus * self._trainer.num_nodes
+                    )
             else:
-                optim_config['sched']['max_steps'] = self._trainer.max_steps
+                optim_config["sched"]["max_steps"] = self._trainer.max_steps
 
         # Force into DictConfig from nested structure
         optim_config = OmegaConf.create(optim_config)
@@ -671,17 +728,17 @@ class ModelPT(LightningModule, Model):
         optim_config = OmegaConf.to_container(optim_config, resolve=True)
 
         # Extract scheduler config if inside optimizer config
-        if 'sched' in optim_config:
-            scheduler_config = optim_config.pop('sched')
+        if "sched" in optim_config:
+            scheduler_config = optim_config.pop("sched")
         else:
             scheduler_config = None
 
         # Check if caller provided optimizer name, default to Adam otherwise
-        optimizer_cls = optim_config.get('_target_', None)
+        optimizer_cls = optim_config.get("_target_", None)
 
         if optimizer_cls is None:
             # Try to get optimizer name for dynamic resolution, defaulting to Adam
-            optimizer_name = optim_config.get('name', 'adam')
+            optimizer_name = optim_config.get("name", "adam")
         else:
             if inspect.isclass(optimizer_cls):
                 optimizer_name = optimizer_cls.__name__.lower()
@@ -691,24 +748,24 @@ class ModelPT(LightningModule, Model):
 
         # We are guarenteed to have lr since it is required by the argparser
         # But maybe user forgot to pass it to this function
-        lr = optim_config.get('lr', None)
+        lr = optim_config.get("lr", None)
 
         # Check if caller has optimizer kwargs, default to empty dictionary
-        if 'args' in optim_config:
-            optimizer_args = optim_config.pop('args')
+        if "args" in optim_config:
+            optimizer_args = optim_config.pop("args")
             optimizer_args = optim.parse_optimizer_args(optimizer_name, optimizer_args)
         else:
             optimizer_args = copy.deepcopy(optim_config)
 
             # Remove extra parameters from optimizer_args nest
             # Assume all other parameters are to be passed into optimizer constructor
-            optimizer_args.pop('name', None)
-            optimizer_args.pop('cls', None)
-            optimizer_args.pop('lr', None)
+            optimizer_args.pop("name", None)
+            optimizer_args.pop("cls", None)
+            optimizer_args.pop("lr", None)
 
         # Adaptive schedulers don't need `lr`
         if lr is not None:
-            optimizer_args['lr'] = lr
+            optimizer_args["lr"] = lr
 
         # Actually instantiate the optimizer
         if optimizer_cls is not None:
@@ -721,9 +778,9 @@ class ModelPT(LightningModule, Model):
             else:
                 # Attempt class path resolution
                 try:
-                    optimizer_cls = OmegaConf.create({'_target_': optimizer_cls})
+                    optimizer_cls = OmegaConf.create({"_target_": optimizer_cls})
                     if lr is not None:
-                        optimizer_config = {'lr': lr}
+                        optimizer_config = {"lr": lr}
                     else:
                         optimizer_config = {}
                     optimizer_config.update(optimizer_args)
@@ -754,7 +811,9 @@ class ModelPT(LightningModule, Model):
 
         # Try to instantiate scheduler for optimizer
         self._scheduler = prepare_lr_scheduler(
-            optimizer=self._optimizer, scheduler_config=scheduler_config, train_dataloader=self._train_dl
+            optimizer=self._optimizer,
+            scheduler_config=scheduler_config,
+            train_dataloader=self._train_dl,
         )
 
         # Return the optimizer with/without scheduler
@@ -782,7 +841,10 @@ class ModelPT(LightningModule, Model):
             return self._test_dl
 
     def validation_epoch_end(
-        self, outputs: Union[List[Dict[str, torch.Tensor]], List[List[Dict[str, torch.Tensor]]]]
+        self,
+        outputs: Union[
+            List[Dict[str, torch.Tensor]], List[List[Dict[str, torch.Tensor]]]
+        ],
     ) -> Optional[Dict[str, Dict[str, torch.Tensor]]]:
         """
         Default DataLoader for Validation set which automatically supports multiple data loaders
@@ -812,32 +874,39 @@ class ModelPT(LightningModule, Model):
         if type(outputs[0]) == dict:
             output_dict = self.multi_validation_epoch_end(outputs, dataloader_idx=0)
 
-            if output_dict is not None and 'log' in output_dict:
-                self.log_dict(output_dict.pop('log'), on_epoch=True)
+            if output_dict is not None and "log" in output_dict:
+                self.log_dict(output_dict.pop("log"), on_epoch=True)
 
             return output_dict
 
         else:  # Case where we provide more than 1 data loader
-            output_dict = {'log': {}}
+            output_dict = {"log": {}}
 
             # The output is a list of list of dicts, outer list corresponds to dataloader idx
             for dataloader_idx, val_outputs in enumerate(outputs):
                 # Get prefix and dispatch call to multi epoch end
-                dataloader_prefix = self.get_validation_dataloader_prefix(dataloader_idx)
-                dataloader_logs = self.multi_validation_epoch_end(val_outputs, dataloader_idx=dataloader_idx)
+                dataloader_prefix = self.get_validation_dataloader_prefix(
+                    dataloader_idx
+                )
+                dataloader_logs = self.multi_validation_epoch_end(
+                    val_outputs, dataloader_idx=dataloader_idx
+                )
 
                 # If result was not provided, generate empty dict
                 dataloader_logs = dataloader_logs or {}
 
                 # Perform `val_loss` resolution first (if provided outside logs)
-                if 'val_loss' in dataloader_logs:
-                    if 'val_loss' not in output_dict and dataloader_idx == self._val_dl_idx:
-                        output_dict['val_loss'] = dataloader_logs['val_loss']
+                if "val_loss" in dataloader_logs:
+                    if (
+                        "val_loss" not in output_dict
+                        and dataloader_idx == self._val_dl_idx
+                    ):
+                        output_dict["val_loss"] = dataloader_logs["val_loss"]
 
                 # For every item in the result dictionary
                 for k, v in dataloader_logs.items():
                     # If the key is `log`
-                    if k == 'log':
+                    if k == "log":
                         # Parse every element of the log, and attach the prefix name of the data loader
                         log_dict = {}
 
@@ -845,7 +914,10 @@ class ModelPT(LightningModule, Model):
                             # If we are logging the metric, but dont provide it at result level,
                             # store it twice - once in log and once in result level.
                             # Also mark log with prefix name to avoid log level clash with other data loaders
-                            if k_log not in output_dict['log'] and dataloader_idx == self._val_dl_idx:
+                            if (
+                                k_log not in output_dict["log"]
+                                and dataloader_idx == self._val_dl_idx
+                            ):
                                 new_k_log = k_log
 
                                 # Also insert duplicate key with prefix for ease of comparison / avoid name clash
@@ -859,25 +931,28 @@ class ModelPT(LightningModule, Model):
                             log_dict[new_k_log] = v_log
 
                         # Update log storage of individual data loader
-                        output_logs = output_dict['log']
+                        output_logs = output_dict["log"]
                         output_logs.update(log_dict)
 
                         # Update global log storage
-                        output_dict['log'] = output_logs
+                        output_dict["log"] = output_logs
 
                     else:
                         # If any values are stored outside 'log', simply prefix name and store
                         new_k = dataloader_prefix + k
                         output_dict[new_k] = v
 
-            if 'log' in output_dict:
-                self.log_dict(output_dict.pop('log'), on_epoch=True)
+            if "log" in output_dict:
+                self.log_dict(output_dict.pop("log"), on_epoch=True)
 
             # return everything else
             return output_dict
 
     def test_epoch_end(
-        self, outputs: Union[List[Dict[str, torch.Tensor]], List[List[Dict[str, torch.Tensor]]]]
+        self,
+        outputs: Union[
+            List[Dict[str, torch.Tensor]], List[List[Dict[str, torch.Tensor]]]
+        ],
     ) -> Optional[Dict[str, Dict[str, torch.Tensor]]]:
         """
         Default DataLoader for Test set which automatically supports multiple data loaders
@@ -907,39 +982,47 @@ class ModelPT(LightningModule, Model):
         if type(outputs[0]) == dict:
             output_dict = self.multi_test_epoch_end(outputs, dataloader_idx=0)
 
-            if output_dict is not None and 'log' in output_dict:
-                self.log_dict(output_dict.pop('log'), on_epoch=True)
+            if output_dict is not None and "log" in output_dict:
+                self.log_dict(output_dict.pop("log"), on_epoch=True)
 
             return output_dict
 
         else:  # Case where we provide more than 1 data loader
-            output_dict = {'log': {}}
+            output_dict = {"log": {}}
 
             # The output is a list of list of dicts, outer list corresponds to dataloader idx
             for dataloader_idx, test_outputs in enumerate(outputs):
                 # Get prefix and dispatch call to multi epoch end
                 dataloader_prefix = self.get_test_dataloader_prefix(dataloader_idx)
-                dataloader_logs = self.multi_test_epoch_end(test_outputs, dataloader_idx=dataloader_idx)
+                dataloader_logs = self.multi_test_epoch_end(
+                    test_outputs, dataloader_idx=dataloader_idx
+                )
 
                 # If result was not provided, generate empty dict
                 dataloader_logs = dataloader_logs or {}
 
                 # Perform `test_loss` resolution first (if provided outside logs)
-                if 'test_loss' in dataloader_logs:
-                    if 'test_loss' not in output_dict and dataloader_idx == self._test_dl_idx:
-                        output_dict['test_loss'] = dataloader_logs['test_loss']
+                if "test_loss" in dataloader_logs:
+                    if (
+                        "test_loss" not in output_dict
+                        and dataloader_idx == self._test_dl_idx
+                    ):
+                        output_dict["test_loss"] = dataloader_logs["test_loss"]
 
                 # For every item in the result dictionary
                 for k, v in dataloader_logs.items():
                     # If the key is `log`
-                    if k == 'log':
+                    if k == "log":
                         # Parse every element of the log, and attach the prefix name of the data loader
                         log_dict = {}
                         for k_log, v_log in v.items():
                             # If we are logging the loss, but dont provide it at result level,
                             # store it twice - once in log and once in result level.
                             # Also mark log with prefix name to avoid log level clash with other data loaders
-                            if k_log not in output_dict['log'] and dataloader_idx == self._test_dl_idx:
+                            if (
+                                k_log not in output_dict["log"]
+                                and dataloader_idx == self._test_dl_idx
+                            ):
                                 new_k_log = k_log
 
                                 # Also insert duplicate key with prefix for ease of comparison / avoid name clash
@@ -952,19 +1035,19 @@ class ModelPT(LightningModule, Model):
                             log_dict[new_k_log] = v_log
 
                         # Update log storage of individual data loader
-                        output_logs = output_dict.get('log', {})
+                        output_logs = output_dict.get("log", {})
                         output_logs.update(log_dict)
 
                         # Update global log storage
-                        output_dict['log'] = output_logs
+                        output_dict["log"] = output_logs
 
                     else:
                         # If any values are stored outside 'log', simply prefix name and store
                         new_k = dataloader_prefix + k
                         output_dict[new_k] = v
 
-            if 'log' in output_dict:
-                self.log_dict(output_dict.pop('log'), on_epoch=True)
+            if "log" in output_dict:
+                self.log_dict(output_dict.pop("log"), on_epoch=True)
 
             # return everything else
             return output_dict
@@ -1042,7 +1125,9 @@ class ModelPT(LightningModule, Model):
         return self._test_names[dataloader_idx]
 
     @rank_zero_only
-    def maybe_init_from_pretrained_checkpoint(self, cfg: OmegaConf, map_location: str = 'cpu'):
+    def maybe_init_from_pretrained_checkpoint(
+        self, cfg: OmegaConf, map_location: str = "cpu"
+    ):
         """
         Initializes a given model with the parameters obtained via specific config arguments.
         The state dict of the provided model will be updated with `strict=False` setting so as to prevent
@@ -1065,7 +1150,11 @@ class ModelPT(LightningModule, Model):
                 (from the pretrained model or checkpoint) will be loaded.
 
         """
-        args = ['init_from_nemo_model', 'init_from_pretrained_model', 'init_from_ptl_ckpt']
+        args = [
+            "init_from_nemo_model",
+            "init_from_pretrained_model",
+            "init_from_ptl_ckpt",
+        ]
         arg_matches = [(1 if arg in cfg and arg is not None else 0) for arg in args]
 
         if sum(arg_matches) == 0:
@@ -1078,50 +1167,66 @@ class ModelPT(LightningModule, Model):
                 f"Found : {[args[idx] for idx, arg_present in enumerate(arg_matches) if arg_present]}"
             )
 
-        if 'init_from_nemo_model' in cfg and cfg.init_from_nemo_model is not None:
+        if "init_from_nemo_model" in cfg and cfg.init_from_nemo_model is not None:
             with open_dict(cfg):
                 # Restore model
-                model_path = cfg.pop('init_from_nemo_model')
-                restored_model = self.restore_from(model_path, map_location=map_location, strict=True)
+                model_path = cfg.pop("init_from_nemo_model")
+                restored_model = self.restore_from(
+                    model_path, map_location=map_location, strict=True
+                )
 
                 # Restore checkpoint into current model
                 self.load_state_dict(restored_model.state_dict(), strict=False)
-                logging.info(f'Model checkpoint restored from nemo file with path : `{model_path}`')
+                logging.info(
+                    f"Model checkpoint restored from nemo file with path : `{model_path}`"
+                )
 
                 del restored_model
 
-        if 'init_from_pretrained_model' in cfg and cfg.init_from_pretrained_model is not None:
+        if (
+            "init_from_pretrained_model" in cfg
+            and cfg.init_from_pretrained_model is not None
+        ):
             with open_dict(cfg):
                 # Restore model
-                model_name = cfg.pop('init_from_pretrained_model')
+                model_name = cfg.pop("init_from_pretrained_model")
 
                 # Check if model is being resumed or not - only works if `Trainer` is attached to model
-                if hasattr(self, 'trainer') and self.trainer is not None:
+                if hasattr(self, "trainer") and self.trainer is not None:
                     trainer = self.trainer
-                    if hasattr(trainer, 'resume_from_checkpoint') and trainer.resume_from_checkpoint is not None:
+                    if (
+                        hasattr(trainer, "resume_from_checkpoint")
+                        and trainer.resume_from_checkpoint is not None
+                    ):
                         logging.info(
                             "Model training is being resumed via Pytorch Lightning.\n"
                             "Initialization from pretrained model (via cloud) will be skipped."
                         )
                         return
 
-                restored_model = self.from_pretrained(model_name, map_location=map_location, strict=True)
+                restored_model = self.from_pretrained(
+                    model_name, map_location=map_location, strict=True
+                )
 
                 # Restore checkpoint into current model
                 self.load_state_dict(restored_model.state_dict(), strict=False)
-                logging.info(f'Model checkpoint restored from pretrained chackpoint with name : `{model_name}`')
+                logging.info(
+                    f"Model checkpoint restored from pretrained chackpoint with name : `{model_name}`"
+                )
 
                 del restored_model
 
-        if 'init_from_ptl_ckpt' in cfg and cfg.init_from_ptl_ckpt is not None:
+        if "init_from_ptl_ckpt" in cfg and cfg.init_from_ptl_ckpt is not None:
             with open_dict(cfg):
                 # Restore checkpoint
-                ckpt_path = cfg.pop('init_from_ptl_ckpt')
+                ckpt_path = cfg.pop("init_from_ptl_ckpt")
                 ckpt = torch.load(ckpt_path, map_location=map_location)
 
                 # Restore checkpoint into current model
-                self.load_state_dict(ckpt['state_dict'], strict=False)
-                logging.info(f'Model checkpoint restored from pytorch lightning chackpoint with path : `{ckpt_path}`')
+                self.load_state_dict(ckpt["state_dict"], strict=False)
+                logging.info(
+                    f"Model checkpoint restored from pytorch lightning chackpoint with path : `{ckpt_path}`"
+                )
 
                 del ckpt
 
@@ -1132,19 +1237,21 @@ class ModelPT(LightningModule, Model):
         Args:
             stage: either 'fit' or 'test'
         """
-        if stage == 'fit':
+        if stage == "fit":
             # Update env variable to bypass multi gpu issue after training
             # This fix affects usage of trainer.test() after trainer.train()
             # If trainer.train() was done on multiple GPUs, then trainer.test()
             # will try to do ddp, even if its a new Trainer object with just 1 GPU.
             # Temporary patch to fix that
-            if 'PL_TRAINER_GPUS' in os.environ:
-                os.environ.pop('PL_TRAINER_GPUS')
+            if "PL_TRAINER_GPUS" in os.environ:
+                os.environ.pop("PL_TRAINER_GPUS")
 
         super().teardown(stage)
 
     @classmethod
-    def extract_state_dict_from(cls, restore_path: str, save_dir: str, split_by_module: bool = False):
+    def extract_state_dict_from(
+        cls, restore_path: str, save_dir: str, split_by_module: bool = False
+    ):
         """
         Extract the state dict(s) from a provided .nemo tarfile and save it to a directory.
 
@@ -1207,20 +1314,27 @@ class ModelPT(LightningModule, Model):
                 else:
                     key_set = set([key.split(".")[0] for key in state_dict.keys()])
                     for primary_key in key_set:
-                        inner_keys = [key for key in state_dict.keys() if key.split(".")[0] == primary_key]
+                        inner_keys = [
+                            key
+                            for key in state_dict.keys()
+                            if key.split(".")[0] == primary_key
+                        ]
                         state_dict_subset = {
-                            ".".join(inner_key.split(".")[1:]): state_dict[inner_key] for inner_key in inner_keys
+                            ".".join(inner_key.split(".")[1:]): state_dict[inner_key]
+                            for inner_key in inner_keys
                         }
                         filepath = os.path.join(save_dir, f"{primary_key}.ckpt")
                         torch.save(state_dict_subset, filepath)
 
-                logging.info(f'Checkpoints from {restore_path} were successfully extracted into {save_dir}.')
+                logging.info(
+                    f"Checkpoints from {restore_path} were successfully extracted into {save_dir}."
+                )
             finally:
                 os.chdir(cwd)
 
         return state_dict
 
-    def prepare_test(self, trainer: 'Trainer') -> bool:
+    def prepare_test(self, trainer: Trainer = Trainer()) -> bool:
         """
         Helper method to check whether the model can safely be tested
         on a dataset after training (or loading a checkpoint).
@@ -1235,7 +1349,7 @@ class ModelPT(LightningModule, Model):
             bool which declares the model safe to test. Provides warnings if it has to
             return False to guide the user.
         """
-        if not hasattr(self._cfg, 'test_ds'):
+        if not hasattr(self._cfg, "test_ds"):
             logging.info("No `test_ds` config found within the manifest.")
             return False
 
@@ -1282,9 +1396,11 @@ class ModelPT(LightningModule, Model):
             if self._trainer.num_gpus and self._trainer.num_nodes:
                 app_state.world_size = self._trainer.num_gpus * self._trainer.num_nodes
         else:
-            logging.warning(f'World size can only be set by PyTorch Lightning Trainer.')
+            logging.warning(f"World size can only be set by PyTorch Lightning Trainer.")
 
-    def _update_dataset_config(self, dataset_name: str, config: Optional[Union[DictConfig, Dict]]):
+    def _update_dataset_config(
+        self, dataset_name: str, config: Optional[Union[DictConfig, Dict]]
+    ):
         """
         Update the config (if not None) of the dataset by given name.
         Preserves said config after updating.
@@ -1296,14 +1412,14 @@ class ModelPT(LightningModule, Model):
                 If dict is passed, it is cast into a DictConfig.
                 The internal config is updated with the passed config.
         """
-        if hasattr(self, '_multi_dataset_mode') and self._multi_dataset_mode is True:
+        if hasattr(self, "_multi_dataset_mode") and self._multi_dataset_mode is True:
             return
 
         if config is not None:
             if not isinstance(config, DictConfig):
                 config = OmegaConf.create(config)
 
-            if dataset_name in ['train', 'validation', 'test']:
+            if dataset_name in ["train", "validation", "test"]:
                 OmegaConf.set_struct(self.cfg, False)
 
                 key_name = dataset_name + "_ds"
@@ -1314,7 +1430,9 @@ class ModelPT(LightningModule, Model):
                 # Update hyper parameters by calling property setter
                 self.cfg = self._cfg
             else:
-                raise ValueError("`dataset_name` when updating config must be one of [train, validation, test]")
+                raise ValueError(
+                    "`dataset_name` when updating config must be one of [train, validation, test]"
+                )
 
     @property
     def num_weights(self):
@@ -1378,7 +1496,7 @@ class ModelPT(LightningModule, Model):
         _NEMO_FILE_FOLDER = folder
 
     def _set_model_guid(self):
-        if not hasattr(self, 'model_guid'):
+        if not hasattr(self, "model_guid"):
             appstate = AppState()
 
             # Generate a unique uuid for the instance

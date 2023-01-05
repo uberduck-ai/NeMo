@@ -30,11 +30,14 @@ from omegaconf import DictConfig, OmegaConf
 
 import nemo
 from nemo.core.neural_types import NeuralType, NeuralTypeComparisonResult
+
 # from nemo.utils import logging
+import logging
+
 # from nemo.utils.cloud import maybe_download_from_cloud
 from nemo.utils.model_utils import import_class_by_path, maybe_update_config_version
 
-__all__ = ['Typing', 'FileIO', 'Model', 'Serialization', 'typecheck']
+__all__ = ["Typing", "FileIO", "Model", "Serialization", "typecheck"]
 
 
 _TYPECHECK_ENABLED = True
@@ -130,7 +133,9 @@ class TypecheckMetadata:
 
         # Compute subset of original_types which are mandatory in the call argspec
         self.mandatory_types = {
-            type_key: type_val for type_key, type_val in self.base_types.items() if not type_val.optional
+            type_key: type_val
+            for type_key, type_val in self.base_types.items()
+            if not type_val.optional
         }
 
 
@@ -149,7 +154,9 @@ class Typing(ABC):
         """Define these to enable output neural type checks"""
         return None
 
-    def _validate_input_types(self, input_types=None, ignore_collections=False, **kwargs):
+    def _validate_input_types(
+        self, input_types=None, ignore_collections=False, **kwargs
+    ):
         """
         This function does a few things.
         1) It ensures that len(self.input_types <non-optional>) <= len(kwargs) <= len(self.input_types).
@@ -173,7 +180,9 @@ class Typing(ABC):
         # TODO: Properly implement this
         if input_types is not None:
             # Precompute metadata
-            metadata = TypecheckMetadata(original_types=input_types, ignore_collections=ignore_collections)
+            metadata = TypecheckMetadata(
+                original_types=input_types, ignore_collections=ignore_collections
+            )
 
             total_input_types = len(input_types)
             mandatory_input_types = len(metadata.mandatory_types)
@@ -194,7 +203,9 @@ class Typing(ABC):
                     )
 
                 # Perform neural type check
-                if hasattr(value, 'neural_type') and not metadata.base_types[key].compare(value.neural_type) in (
+                if hasattr(value, "neural_type") and not metadata.base_types[
+                    key
+                ].compare(value.neural_type) in (
                     NeuralTypeComparisonResult.SAME,
                     NeuralTypeComparisonResult.GREATER,
                 ):
@@ -204,14 +215,23 @@ class Typing(ABC):
                         f"Input type found : {value.neural_type}",
                         f"Argument: {key}",
                     ]
-                    for i, dict_tuple in enumerate(metadata.base_types[key].elements_type.type_parameters.items()):
-                        error_msg.insert(i + 2, f'  input param_{i} : {dict_tuple[0]}: {dict_tuple[1]}')
-                    for i, dict_tuple in enumerate(value.neural_type.elements_type.type_parameters.items()):
-                        error_msg.append(f'  input param_{i} : {dict_tuple[0]}: {dict_tuple[1]}')
+                    for i, dict_tuple in enumerate(
+                        metadata.base_types[key].elements_type.type_parameters.items()
+                    ):
+                        error_msg.insert(
+                            i + 2,
+                            f"  input param_{i} : {dict_tuple[0]}: {dict_tuple[1]}",
+                        )
+                    for i, dict_tuple in enumerate(
+                        value.neural_type.elements_type.type_parameters.items()
+                    ):
+                        error_msg.append(
+                            f"  input param_{i} : {dict_tuple[0]}: {dict_tuple[1]}"
+                        )
                     raise TypeError("\n".join(error_msg))
 
                 # Perform input ndim check
-                if hasattr(value, 'shape'):
+                if hasattr(value, "shape"):
                     value_shape = value.shape
                     type_shape = metadata.base_types[key].axes
                     name = key
@@ -232,7 +252,9 @@ class Typing(ABC):
                         """
                         self.__check_neural_type(val, metadata, depth=1, name=key)
 
-    def _attach_and_validate_output_types(self, out_objects, ignore_collections=False, output_types=None):
+    def _attach_and_validate_output_types(
+        self, out_objects, ignore_collections=False, output_types=None
+    ):
         """
         This function does a few things.
         1) It ensures that len(out_object) == len(self.output_types).
@@ -254,7 +276,9 @@ class Typing(ABC):
         # TODO: Properly implement this
         if output_types is not None:
             # Precompute metadata
-            metadata = TypecheckMetadata(original_types=output_types, ignore_collections=ignore_collections)
+            metadata = TypecheckMetadata(
+                original_types=output_types, ignore_collections=ignore_collections
+            )
             out_types_list = list(metadata.base_types.items())
 
             # First convert all outputs to list/tuple format to check correct number of outputs
@@ -295,7 +319,7 @@ class Typing(ABC):
                     pass
 
                 # Perform output ndim check
-                if hasattr(out_objects, 'shape'):
+                if hasattr(out_objects, "shape"):
                     value_shape = out_objects.shape
                     type_shape = out_types_list[0][1].axes
                     name = out_types_list[0][0]
@@ -328,7 +352,9 @@ class Typing(ABC):
                     depth = 0
 
                 for ind, res in enumerate(out_objects):
-                    self.__attach_neural_type(res, metadata, depth=depth, name=out_types_list[0][0])
+                    self.__attach_neural_type(
+                        res, metadata, depth=depth, name=out_types_list[0][0]
+                    )
             else:
                 # If more then one item is returned in a return statement, python will wrap
                 # the output with an outer tuple. Therefore there must be a 1:1 correspondence
@@ -339,7 +365,9 @@ class Typing(ABC):
                 # Since we are guarenteed that the outer tuple will be built by python,
                 # assuming initial depth of 0 is appropriate.
                 for ind, res in enumerate(out_objects):
-                    self.__attach_neural_type(res, metadata, depth=0, name=out_types_list[ind][0])
+                    self.__attach_neural_type(
+                        res, metadata, depth=0, name=out_types_list[ind][0]
+                    )
 
     def __check_neural_type(self, obj, metadata, depth, name=None):
         if isinstance(obj, tuple) or isinstance(obj, list):
@@ -358,7 +386,7 @@ class Typing(ABC):
                 f"Expected nested depth : {metadata.container_depth[name]}"
             )
 
-        if hasattr(obj, 'neural_type') and not type_val.compare(obj.neural_type) in (
+        if hasattr(obj, "neural_type") and not type_val.compare(obj.neural_type) in (
             NeuralTypeComparisonResult.SAME,
             NeuralTypeComparisonResult.GREATER,
         ):
@@ -369,7 +397,7 @@ class Typing(ABC):
             )
 
         # Perform input ndim check
-        if hasattr(obj, 'shape'):
+        if hasattr(obj, "shape"):
             value_shape = obj.shape
             type_shape = type_val.axes
 
@@ -403,7 +431,7 @@ class Typing(ABC):
             pass
 
         # Perform output ndim check
-        if hasattr(obj, 'shape'):
+        if hasattr(obj, "shape"):
             value_shape = obj.shape
             type_shape = type_val.axes
 
@@ -428,18 +456,18 @@ class Serialization(ABC):
         config = maybe_update_config_version(config)
 
         # Hydra 0.x API
-        if ('cls' in config or 'target' in config) and 'params' in config:
+        if ("cls" in config or "target" in config) and "params" in config:
             # regular hydra-based instantiation
             instance = hydra.utils.instantiate(config=config)
         # Hydra 1.x API
-        elif '_target_' in config:
+        elif "_target_" in config:
             # regular hydra-based instantiation
             instance = hydra.utils.instantiate(config=config)
         else:
             instance = None
             imported_cls_tb = None
             # Attempt class path resolution from config `target` class (if it exists)
-            if 'target' in config:
+            if "target" in config:
                 target_cls = config.target
                 imported_cls = None
                 try:
@@ -471,13 +499,17 @@ class Serialization(ABC):
                     )
                 instance = cls(cfg=config)
 
-        if not hasattr(instance, '_cfg'):
+        if not hasattr(instance, "_cfg"):
             instance._cfg = config
         return instance
 
     def to_config_dict(self) -> DictConfig:
         """Returns object's configuration to config dictionary"""
-        if hasattr(self, '_cfg') and self._cfg is not None and isinstance(self._cfg, DictConfig):
+        if (
+            hasattr(self, "_cfg")
+            and self._cfg is not None
+            and isinstance(self._cfg, DictConfig)
+        ):
             # Resolve the config dict
             config = OmegaConf.to_container(self._cfg, resolve=True)
             config = OmegaConf.create(config)
@@ -490,7 +522,7 @@ class Serialization(ABC):
             return self._cfg
         else:
             raise NotImplementedError(
-                'to_config_dict() can currently only return object._cfg but current object does not have it.'
+                "to_config_dict() can currently only return object._cfg but current object does not have it."
             )
 
 
@@ -504,7 +536,7 @@ class FileIO(ABC):
         cls,
         restore_path: str,
         override_config_path: Optional[str] = None,
-        map_location: Optional['torch.device'] = None,
+        map_location: Optional["torch.device"] = None,
         strict: bool = True,
         return_config: bool = False,
     ):
@@ -536,9 +568,9 @@ class FileIO(ABC):
 
         Returns:
         """
-        if hasattr(self, '_cfg'):
+        if hasattr(self, "_cfg"):
             self._cfg = maybe_update_config_version(self._cfg)
-            with open(path2yaml_file, 'w') as fout:
+            with open(path2yaml_file, "w") as fout:
                 OmegaConf.save(config=self._cfg, f=fout, resolve=True)
         else:
             raise NotImplementedError()
@@ -550,7 +582,7 @@ class PretrainedModelInfo:
     pretrained_model_name: str
     description: str
     location: str
-    class_: 'Model' = None
+    class_: "Model" = None
     aliases: List[str] = None
 
     def __repr__(self):
@@ -562,7 +594,9 @@ class PretrainedModelInfo:
         )
 
         if self.class_ is not None:
-            extras = "{extras},\n\t" "class_={class_}".format(extras=extras, **self.__dict__)
+            extras = "{extras},\n\t" "class_={class_}".format(
+                extras=extras, **self.__dict__
+            )
 
         representation = f"{base}(\n\t{extras}\n)"
         return representation
@@ -576,7 +610,10 @@ class PretrainedModelInfo:
     def __eq__(self, other):
         # another object is equal to self, iff
         # if it's hash is equal to hash(self)
-        return hash(self) == hash(other) or self.pretrained_model_name == other.pretrained_model_name
+        return (
+            hash(self) == hash(other)
+            or self.pretrained_model_name == other.pretrained_model_name
+        )
 
     def __lt__(self, other):
         return self.pretrained_model_name < other.pretrained_model_name
@@ -610,7 +647,9 @@ class Model(Typing, Serialization, FileIO):
         """
         model_names = []
         if cls.list_available_models() is not None:
-            model_names = [model.pretrained_model_name for model in cls.list_available_models()]
+            model_names = [
+                model.pretrained_model_name for model in cls.list_available_models()
+            ]
         return model_names
 
     @classmethod
@@ -619,7 +658,7 @@ class Model(Typing, Serialization, FileIO):
         model_name: str,
         refresh_cache: bool = False,
         override_config_path: Optional[str] = None,
-        map_location: Optional['torch.device'] = None,
+        map_location: Optional["torch.device"] = None,
         strict: bool = True,
         return_config: bool = False,
     ):
@@ -666,12 +705,20 @@ class Model(Typing, Serialization, FileIO):
             )
         filename = location_in_the_cloud.split("/")[-1]
         url = location_in_the_cloud.replace(filename, "")
-        cache_dir = Path.joinpath(Path.home(), f'.cache/torch/NeMo/NeMo_{nemo.__version__}/{filename[:-5]}')
+        cache_dir = Path.joinpath(
+            Path.home(), f".cache/torch/NeMo/NeMo_{nemo.__version__}/{filename[:-5]}"
+        )
         # If either description and location in the cloud changes, this will force re-download
-        cache_subfolder = hashlib.md5((location_in_the_cloud + description).encode('utf-8')).hexdigest()
+        cache_subfolder = hashlib.md5(
+            (location_in_the_cloud + description).encode("utf-8")
+        ).hexdigest()
         # if file exists on cache_folder/subfolder, it will be re-used, unless refresh_cache is True
         nemo_model_file_in_cache = maybe_download_from_cloud(
-            url=url, filename=filename, cache_dir=cache_dir, subfolder=cache_subfolder, refresh_cache=refresh_cache
+            url=url,
+            filename=filename,
+            cache_dir=cache_dir,
+            subfolder=cache_subfolder,
+            refresh_cache=refresh_cache,
         )
         logging.info("Instantiating model from pre-trained checkpoint")
         if class_ is None:
@@ -748,12 +795,16 @@ class typecheck:
     @wrapt.decorator(enabled=is_typecheck_enabled)
     def __call__(self, wrapped, instance: Typing, args, kwargs):
         if instance is None:
-            raise RuntimeError("Only classes which inherit nemo.core.Typing can use this decorator !")
+            raise RuntimeError(
+                "Only classes which inherit nemo.core.Typing can use this decorator !"
+            )
 
         if not isinstance(instance, Typing):
-            raise RuntimeError("Only classes which inherit nemo.core.Typing can use this decorator !")
+            raise RuntimeError(
+                "Only classes which inherit nemo.core.Typing can use this decorator !"
+            )
 
-        if hasattr(instance, 'input_ports') or hasattr(instance, 'output_ports'):
+        if hasattr(instance, "input_ports") or hasattr(instance, "output_ports"):
             raise RuntimeError(
                 "Typing requires override of `input_types()` and `output_types()`, "
                 "not `input_ports() and `output_ports()`"
@@ -783,16 +834,24 @@ class typecheck:
 
         # Check that all arguments are kwargs
         if input_types is not None and len(args) > 0:
-            raise TypeError("All arguments must be passed by kwargs only for typed methods")
+            raise TypeError(
+                "All arguments must be passed by kwargs only for typed methods"
+            )
 
         # Perform rudimentary input checks here
-        instance._validate_input_types(input_types=input_types, ignore_collections=self.ignore_collections, **kwargs)
+        instance._validate_input_types(
+            input_types=input_types,
+            ignore_collections=self.ignore_collections,
+            **kwargs,
+        )
 
         # Call the method - this can be forward, or any other callable method
         outputs = wrapped(*args, **kwargs)
 
         instance._attach_and_validate_output_types(
-            output_types=output_types, ignore_collections=self.ignore_collections, out_objects=outputs
+            output_types=output_types,
+            ignore_collections=self.ignore_collections,
+            out_objects=outputs,
         )
 
         return outputs

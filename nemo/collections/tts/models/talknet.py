@@ -22,10 +22,16 @@ from pytorch_lightning import Trainer
 from torch import nn
 from torch.nn import functional as F
 
+from pytorch_lightning import Trainer
+
 from nemo.collections.asr.data.audio_to_text import AudioToCharWithDursF0Dataset
 from nemo.collections.tts.helpers.helpers import get_mask_from_lengths
 from nemo.collections.tts.models.base import SpectrogramGenerator
-from nemo.collections.tts.modules.talknet import GaussianEmbedding, MaskedInstanceNorm1d, StyleResidual
+from nemo.collections.tts.modules.talknet import (
+    GaussianEmbedding,
+    MaskedInstanceNorm1d,
+    StyleResidual,
+)
 from nemo.core import Exportable
 from nemo.core.classes import ModelPT, PretrainedModelInfo, typecheck
 from nemo.core.neural_types import MelSpectrogramType, NeuralType
@@ -34,12 +40,14 @@ from nemo.core.neural_types import MelSpectrogramType, NeuralType
 class TalkNetDursModel(ModelPT):
     """TalkNet's durations prediction pipeline."""
 
-    def __init__(self, cfg: DictConfig, trainer: 'Trainer' = None):
+    def __init__(self, cfg: DictConfig, trainer: Trainer = Trainer()):
         super().__init__(cfg=cfg, trainer=trainer)
         typecheck.set_typecheck_enabled(enabled=False)
 
         cfg = self._cfg
-        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(**cfg.train_ds.dataset.vocab)
+        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(
+            **cfg.train_ds.dataset.vocab
+        )
         self.embed = nn.Embedding(len(self.vocab.labels), cfg.d_char)
         self.model = instantiate(cfg.model)
         d_out = cfg.model.jasper[-1].filters
@@ -53,7 +61,7 @@ class TalkNetDursModel(ModelPT):
 
     @staticmethod
     def _metrics(true_durs, true_text_len, pred_durs):
-        loss = F.mse_loss(pred_durs, (true_durs + 1).float().log(), reduction='none')
+        loss = F.mse_loss(pred_durs, (true_durs + 1).float().log(), reduction="none")
         mask = get_mask_from_lengths(true_text_len)
         loss *= mask.float()
         loss = loss.sum() / mask.sum()
@@ -63,35 +71,60 @@ class TalkNetDursModel(ModelPT):
         durs_pred = durs_pred.round().long()
 
         acc = ((true_durs == durs_pred) * mask).sum().float() / mask.sum() * 100
-        acc_dist_1 = (((true_durs - durs_pred).abs() <= 1) * mask).sum().float() / mask.sum() * 100
-        acc_dist_3 = (((true_durs - durs_pred).abs() <= 3) * mask).sum().float() / mask.sum() * 100
+        acc_dist_1 = (
+            (((true_durs - durs_pred).abs() <= 1) * mask).sum().float()
+            / mask.sum()
+            * 100
+        )
+        acc_dist_3 = (
+            (((true_durs - durs_pred).abs() <= 3) * mask).sum().float()
+            / mask.sum()
+            * 100
+        )
 
         return loss, acc, acc_dist_1, acc_dist_3
 
     def training_step(self, batch, batch_idx):
         _, _, text, text_len, durs, *_ = batch
         pred_durs = self(text=text, text_len=text_len)
-        loss, acc, acc_dist_1, acc_dist_3 = self._metrics(true_durs=durs, true_text_len=text_len, pred_durs=pred_durs,)
+        loss, acc, acc_dist_1, acc_dist_3 = self._metrics(
+            true_durs=durs,
+            true_text_len=text_len,
+            pred_durs=pred_durs,
+        )
         train_log = {
-            'train_loss': loss,
-            'train_acc': acc,
-            'train_acc_dist_1': acc_dist_1,
-            'train_acc_dist_3': acc_dist_3,
+            "train_loss": loss,
+            "train_acc": acc,
+            "train_acc_dist_1": acc_dist_1,
+            "train_acc_dist_3": acc_dist_3,
         }
-        return {'loss': loss, 'progress_bar': train_log, 'log': train_log}
+        return {"loss": loss, "progress_bar": train_log, "log": train_log}
 
     def validation_step(self, batch, batch_idx):
         _, _, text, text_len, durs, *_ = batch
         pred_durs = self(text=text, text_len=text_len)
-        loss, acc, acc_dist_1, acc_dist_3 = self._metrics(true_durs=durs, true_text_len=text_len, pred_durs=pred_durs,)
-        val_log = {'val_loss': loss, 'val_acc': acc, 'val_acc_dist_1': acc_dist_1, 'val_acc_dist_3': acc_dist_3}
-        self.log_dict(val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True)
+        loss, acc, acc_dist_1, acc_dist_3 = self._metrics(
+            true_durs=durs,
+            true_text_len=text_len,
+            pred_durs=pred_durs,
+        )
+        val_log = {
+            "val_loss": loss,
+            "val_acc": acc,
+            "val_acc_dist_1": acc_dist_1,
+            "val_acc_dist_3": acc_dist_3,
+        }
+        self.log_dict(
+            val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True
+        )
 
     @staticmethod
     def _loader(cfg):
         dataset = instantiate(cfg.dataset)
         return torch.utils.data.DataLoader(  # noqa
-            dataset=dataset, collate_fn=dataset.collate_fn, **cfg.dataloader_params,
+            dataset=dataset,
+            collate_fn=dataset.collate_fn,
+            **cfg.dataloader_params,
         )
 
     def setup_training_data(self, cfg):
@@ -105,7 +138,7 @@ class TalkNetDursModel(ModelPT):
         pass
 
     @classmethod
-    def list_available_models(cls) -> 'List[PretrainedModelInfo]':
+    def list_available_models(cls) -> "List[PretrainedModelInfo]":
         """
         This method returns a list of pre-trained model which can be instantiated directly from NVIDIA's NGC cloud.
         Returns:
@@ -132,12 +165,14 @@ class TalkNetDursModel(ModelPT):
 class TalkNetPitchModel(ModelPT):
     """TalkNet's pitch prediction pipeline."""
 
-    def __init__(self, cfg: DictConfig, trainer: 'Trainer' = None):
+    def __init__(self, cfg: DictConfig, trainer: Trainer = Trainer()):
         super().__init__(cfg=cfg, trainer=trainer)
         typecheck.set_typecheck_enabled(enabled=False)
 
         cfg = self._cfg
-        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(**cfg.train_ds.dataset.vocab)
+        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(
+            **cfg.train_ds.dataset.vocab
+        )
         self.embed = GaussianEmbedding(self.vocab, cfg.d_char)
         self.model = instantiate(cfg.model)
         d_out = cfg.model.jasper[-1].filters
@@ -155,14 +190,20 @@ class TalkNetPitchModel(ModelPT):
     def _metrics(self, true_f0, true_f0_mask, pred_f0_sil, pred_f0_body):
         sil_mask = true_f0 < 1e-5
         sil_gt = sil_mask.long()
-        sil_loss = F.binary_cross_entropy_with_logits(input=pred_f0_sil, target=sil_gt.float(), reduction='none',)
+        sil_loss = F.binary_cross_entropy_with_logits(
+            input=pred_f0_sil,
+            target=sil_gt.float(),
+            reduction="none",
+        )
         sil_loss *= true_f0_mask.type_as(sil_loss)
         sil_loss = sil_loss.sum() / true_f0_mask.sum()
         sil_acc = ((torch.sigmoid(pred_f0_sil) > 0.5).long() == sil_gt).float()  # noqa
         sil_acc *= true_f0_mask.type_as(sil_acc)
         sil_acc = sil_acc.sum() / true_f0_mask.sum()
 
-        body_mse = F.mse_loss(pred_f0_body, (true_f0 - self.f0_mean) / self.f0_std, reduction='none')
+        body_mse = F.mse_loss(
+            pred_f0_body, (true_f0 - self.f0_mean) / self.f0_std, reduction="none"
+        )
         body_mask = ~sil_mask
         body_mse *= body_mask.type_as(body_mse)  # noqa
         body_mse = body_mse.sum() / body_mask.sum()  # noqa
@@ -178,26 +219,40 @@ class TalkNetPitchModel(ModelPT):
         _, audio_len, text, text_len, durs, f0, f0_mask = batch
         pred_f0_sil, pred_f0_body = self(text=text, text_len=text_len, durs=durs)
         loss, sil_acc, body_mae = self._metrics(
-            true_f0=f0, true_f0_mask=f0_mask, pred_f0_sil=pred_f0_sil, pred_f0_body=pred_f0_body,
+            true_f0=f0,
+            true_f0_mask=f0_mask,
+            pred_f0_sil=pred_f0_sil,
+            pred_f0_body=pred_f0_body,
         )
-        train_log = {'train_loss': loss, 'train_sil_acc': sil_acc, 'train_body_mae': body_mae}
-        return {'loss': loss, 'progress_bar': train_log, 'log': train_log}
+        train_log = {
+            "train_loss": loss,
+            "train_sil_acc": sil_acc,
+            "train_body_mae": body_mae,
+        }
+        return {"loss": loss, "progress_bar": train_log, "log": train_log}
 
     def validation_step(self, batch, batch_idx):
         _, _, text, text_len, durs, f0, f0_mask = batch
         pred_f0_sil, pred_f0_body = self(text=text, text_len=text_len, durs=durs)
         loss, sil_acc, body_mae = self._metrics(
-            true_f0=f0, true_f0_mask=f0_mask, pred_f0_sil=pred_f0_sil, pred_f0_body=pred_f0_body,
+            true_f0=f0,
+            true_f0_mask=f0_mask,
+            pred_f0_sil=pred_f0_sil,
+            pred_f0_body=pred_f0_body,
         )
 
-        val_log = {'val_loss': loss, 'val_sil_acc': sil_acc, 'val_body_mae': body_mae}
-        self.log_dict(val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True)
+        val_log = {"val_loss": loss, "val_sil_acc": sil_acc, "val_body_mae": body_mae}
+        self.log_dict(
+            val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True
+        )
 
     @staticmethod
     def _loader(cfg):
         dataset = instantiate(cfg.dataset)
         return torch.utils.data.DataLoader(  # noqa
-            dataset=dataset, collate_fn=dataset.collate_fn, **cfg.dataloader_params,
+            dataset=dataset,
+            collate_fn=dataset.collate_fn,
+            **cfg.dataloader_params,
         )
 
     def setup_training_data(self, cfg):
@@ -211,7 +266,7 @@ class TalkNetPitchModel(ModelPT):
         pass
 
     @classmethod
-    def list_available_models(cls) -> 'List[PretrainedModelInfo]':
+    def list_available_models(cls) -> "List[PretrainedModelInfo]":
         """
         This method returns a list of pre-trained model which can be instantiated directly from NVIDIA's NGC cloud.
         Returns:
@@ -240,14 +295,18 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
 
     @property
     def output_types(self):
-        return OrderedDict({"mel-spectrogram": NeuralType(('B', 'D', 'T'), MelSpectrogramType())})
+        return OrderedDict(
+            {"mel-spectrogram": NeuralType(("B", "D", "T"), MelSpectrogramType())}
+        )
 
-    def __init__(self, cfg: DictConfig, trainer: 'Trainer' = None):
+    def __init__(self, cfg: DictConfig, trainer: Trainer = Trainer()):
         super().__init__(cfg=cfg, trainer=trainer)
         typecheck.set_typecheck_enabled(enabled=False)
 
         cfg = self._cfg
-        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(**cfg.train_ds.dataset.vocab)
+        self.vocab = AudioToCharWithDursF0Dataset.make_vocab(
+            **cfg.train_ds.dataset.vocab
+        )
         self.blanking = cfg.train_ds.dataset.blanking
         self.preprocessor = instantiate(cfg.preprocessor)
         self.embed = GaussianEmbedding(self.vocab, cfg.d_char)
@@ -269,7 +328,7 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
 
     @staticmethod
     def _metrics(true_mel, true_mel_len, pred_mel):
-        loss = F.mse_loss(pred_mel, true_mel, reduction='none').mean(dim=-2)
+        loss = F.mse_loss(pred_mel, true_mel, reduction="none").mean(dim=-2)
         mask = get_mask_from_lengths(true_mel_len)
         loss *= mask.float()
         loss = loss.sum() / mask.sum()
@@ -280,22 +339,26 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
         mel, mel_len = self.preprocessor(audio, audio_len)
         pred_mel = self(text=text, text_len=text_len, durs=durs, f0=f0)
         loss = self._metrics(true_mel=mel, true_mel_len=mel_len, pred_mel=pred_mel)
-        train_log = {'train_loss': loss}
-        return {'loss': loss, 'progress_bar': train_log, 'log': train_log}
+        train_log = {"train_loss": loss}
+        return {"loss": loss, "progress_bar": train_log, "log": train_log}
 
     def validation_step(self, batch, batch_idx):
         audio, audio_len, text, text_len, durs, f0, f0_mask = batch
         mel, mel_len = self.preprocessor(audio, audio_len)
         pred_mel = self(text=text, text_len=text_len, durs=durs, f0=f0)
         loss = self._metrics(true_mel=mel, true_mel_len=mel_len, pred_mel=pred_mel)
-        val_log = {'val_loss': loss}
-        self.log_dict(val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True)
+        val_log = {"val_loss": loss}
+        self.log_dict(
+            val_log, prog_bar=False, on_epoch=True, logger=True, sync_dist=True
+        )
 
     @staticmethod
     def _loader(cfg):
         dataset = instantiate(cfg.dataset)
         return torch.utils.data.DataLoader(  # noqa
-            dataset=dataset, collate_fn=dataset.collate_fn, **cfg.dataloader_params,
+            dataset=dataset,
+            collate_fn=dataset.collate_fn,
+            **cfg.dataloader_params,
         )
 
     def setup_training_data(self, cfg):
@@ -312,16 +375,21 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
         return torch.tensor(self.vocab.encode(text)).long().unsqueeze(0).to(self.device)
 
     def generate_spectrogram(self, tokens: torch.Tensor, **kwargs) -> torch.Tensor:
-        assert hasattr(self, '_durs_model') and hasattr(self, '_pitch_model')
+        assert hasattr(self, "_durs_model") and hasattr(self, "_pitch_model")
 
         if self.blanking:
             tokens = [
                 AudioToCharWithDursF0Dataset.interleave(
-                    x=torch.empty(len(t) + 1, dtype=torch.long, device=t.device).fill_(self.vocab.blank), y=t,
+                    x=torch.empty(len(t) + 1, dtype=torch.long, device=t.device).fill_(
+                        self.vocab.blank
+                    ),
+                    y=t,
                 )
                 for t in tokens
             ]
-            tokens = AudioToCharWithDursF0Dataset.merge(tokens, value=self.vocab.pad, dtype=torch.long)
+            tokens = AudioToCharWithDursF0Dataset.merge(
+                tokens, value=self.vocab.pad, dtype=torch.long
+            )
 
         text_len = torch.tensor(tokens.shape[-1], dtype=torch.long).unsqueeze(0)
         durs = self._durs_model(tokens, text_len)
@@ -339,7 +407,7 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
         mel = self(tokens, text_len, durs, f0)
 
         return mel
-    
+
     def force_spectrogram(
         self, tokens: torch.Tensor, durs: torch.Tensor, f0: torch.Tensor, **kwargs
     ) -> torch.Tensor:
@@ -389,7 +457,7 @@ class TalkNetSpectModel(SpectrogramGenerator, Exportable):
         return mel
 
     @classmethod
-    def list_available_models(cls) -> 'List[PretrainedModelInfo]':
+    def list_available_models(cls) -> "List[PretrainedModelInfo]":
         """
         This method returns a list of pre-trained model which can be instantiated directly from NVIDIA's NGC cloud.
         Returns:
