@@ -53,8 +53,12 @@ CONSTANT = 1e-5
 
 def normalize_batch(x, seq_len, normalize_type):
     if normalize_type == "per_feature":
-        x_mean = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
-        x_std = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
+        x_mean = torch.zeros(
+            (seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device
+        )
+        x_std = torch.zeros(
+            (seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device
+        )
         for i in range(x.shape[0]):
             if x[i, :, : seq_len[i]].shape[1] == 1:
                 raise ValueError(
@@ -78,13 +82,15 @@ def normalize_batch(x, seq_len, normalize_type):
     elif "fixed_mean" in normalize_type and "fixed_std" in normalize_type:
         x_mean = torch.tensor(normalize_type["fixed_mean"], device=x.device)
         x_std = torch.tensor(normalize_type["fixed_std"], device=x.device)
-        return (x - x_mean.view(x.shape[0], x.shape[1]).unsqueeze(2)) / x_std.view(x.shape[0], x.shape[1]).unsqueeze(2)
+        return (x - x_mean.view(x.shape[0], x.shape[1]).unsqueeze(2)) / x_std.view(
+            x.shape[0], x.shape[1]
+        ).unsqueeze(2)
     else:
         return x
 
 
 def splice_frames(x, frame_splicing):
-    """ Stacks frames together across feature dim
+    """Stacks frames together across feature dim
 
     input is batch_size, feature_dim, num_frames
     output is batch_size, feature_dim*frame_splicing, num_frames
@@ -140,7 +146,9 @@ class FeaturizerFactory(object):
 
     @classmethod
     def from_config(cls, input_cfg, perturbation_configs=None):
-        return WaveformFeaturizer.from_config(input_cfg, perturbation_configs=perturbation_configs)
+        return WaveformFeaturizer.from_config(
+            input_cfg, perturbation_configs=perturbation_configs
+        )
 
 
 # Create helper class to patch forward func for use with AMP
@@ -158,7 +166,9 @@ class STFTExactPad(STFTPatch):
         self.pad_amount = (self.filter_length - self.hop_length) // 2
 
     def inverse(self, magnitude, phase):
-        recombine_magnitude_phase = torch.cat([magnitude * torch.cos(phase), magnitude * torch.sin(phase)], dim=1)
+        recombine_magnitude_phase = torch.cat(
+            [magnitude * torch.cos(phase), magnitude * torch.sin(phase)], dim=1
+        )
 
         inverse_transform = F.conv_transpose1d(
             recombine_magnitude_phase,
@@ -177,11 +187,15 @@ class STFTExactPad(STFTPatch):
                 dtype=np.float32,
             )
             # remove modulation effects
-            approx_nonzero_indices = torch.from_numpy(np.where(window_sum > tiny(window_sum))[0])
-            window_sum = torch.autograd.Variable(torch.from_numpy(window_sum), requires_grad=False).to(
-                magnitude.device
+            approx_nonzero_indices = torch.from_numpy(
+                np.where(window_sum > tiny(window_sum))[0]
             )
-            inverse_transform[..., approx_nonzero_indices] /= window_sum[approx_nonzero_indices]
+            window_sum = torch.autograd.Variable(
+                torch.from_numpy(window_sum), requires_grad=False
+            ).to(magnitude.device)
+            inverse_transform[..., approx_nonzero_indices] /= window_sum[
+                approx_nonzero_indices
+            ]
 
             # scale by hop ratio
             inverse_transform *= self.filter_length / self.hop_length
@@ -212,7 +226,7 @@ class FilterbankFeatures(nn.Module):
         highfreq=None,
         log=True,
         log_zero_guard_type="add",
-        log_zero_guard_value=2 ** -24,
+        log_zero_guard_value=2**-24,
         dither=CONSTANT,
         pad_to=16,
         max_duration=16.7,
@@ -254,7 +268,9 @@ class FilterbankFeatures(nn.Module):
         self.win_length = n_window_size
         self.hop_length = n_window_stride
         self.n_fft = n_fft or 2 ** math.ceil(math.log2(self.win_length))
-        self.stft_pad_amount = (self.n_fft - self.hop_length) // 2 if exact_pad else None
+        self.stft_pad_amount = (
+            (self.n_fft - self.hop_length) // 2 if exact_pad else None
+        )
         self.stft_exact_pad = stft_exact_pad
         self.stft_conv = stft_conv
 
@@ -262,22 +278,28 @@ class FilterbankFeatures(nn.Module):
             logging.info("STFT using conv")
             if stft_exact_pad:
                 logging.info("STFT using exact pad")
-                self.stft = STFTExactPad(self.n_fft, self.hop_length, self.win_length, window)
+                self.stft = STFTExactPad(
+                    self.n_fft, self.hop_length, self.win_length, window
+                )
             else:
-                self.stft = STFTPatch(self.n_fft, self.hop_length, self.win_length, window)
+                self.stft = STFTPatch(
+                    self.n_fft, self.hop_length, self.win_length, window
+                )
         else:
             logging.info("STFT using torch")
             if exact_pad:
                 logging.info("STFT using exact pad")
             torch_windows = {
-                'hann': torch.hann_window,
-                'hamming': torch.hamming_window,
-                'blackman': torch.blackman_window,
-                'bartlett': torch.bartlett_window,
-                'none': None,
+                "hann": torch.hann_window,
+                "hamming": torch.hamming_window,
+                "blackman": torch.blackman_window,
+                "bartlett": torch.bartlett_window,
+                "none": None,
             }
             window_fn = torch_windows.get(window, None)
-            window_tensor = window_fn(self.win_length, periodic=False) if window_fn else None
+            window_tensor = (
+                window_fn(self.win_length, periodic=False) if window_fn else None
+            )
             self.register_buffer("window", window_tensor)
             self.stft = lambda x: stft_patch(
                 x,
@@ -299,12 +321,21 @@ class FilterbankFeatures(nn.Module):
         highfreq = highfreq or sample_rate / 2
 
         filterbanks = torch.tensor(
-            librosa.filters.mel(sample_rate, self.n_fft, n_mels=nfilt, fmin=lowfreq, fmax=highfreq), dtype=torch.float
+            librosa.filters.mel(
+                sr=sample_rate,
+                n_fft=self.n_fft,
+                n_mels=nfilt,
+                fmin=lowfreq,
+                fmax=highfreq,
+            ),
+            dtype=torch.float,
         ).unsqueeze(0)
         self.register_buffer("fb", filterbanks)
 
         # Calculate maximum sequence length
-        max_length = self.get_seq_len(torch.tensor(max_duration * sample_rate, dtype=torch.float))
+        max_length = self.get_seq_len(
+            torch.tensor(max_duration * sample_rate, dtype=torch.float)
+        )
         max_pad = pad_to - (max_length % pad_to) if pad_to > 0 else 0
         self.max_length = max_length + max_pad
         self.pad_value = pad_value
@@ -355,7 +386,11 @@ class FilterbankFeatures(nn.Module):
             pad_amount = self.stft.pad_amount * 2
         else:
             # Assuming that center is True is stft_pad_amount = 0
-            pad_amount = self.stft_pad_amount * 2 if self.stft_pad_amount is not None else self.n_fft // 2 * 2
+            pad_amount = (
+                self.stft_pad_amount * 2
+                if self.stft_pad_amount is not None
+                else self.n_fft // 2 * 2
+            )
         seq_len = torch.floor((seq_len + pad_amount - self.n_fft) / self.hop_length) + 1
         return seq_len.to(dtype=torch.long)
 
@@ -377,7 +412,9 @@ class FilterbankFeatures(nn.Module):
 
         # do preemphasis
         if self.preemph is not None:
-            x = torch.cat((x[:, 0].unsqueeze(1), x[:, 1:] - self.preemph * x[:, :-1]), dim=1)
+            x = torch.cat(
+                (x[:, 0].unsqueeze(1), x[:, 1:] - self.preemph * x[:, :-1]), dim=1
+            )
 
         # disable autocast to get full range of stft values
         with torch.cuda.amp.autocast(enabled=False):
@@ -419,11 +456,15 @@ class FilterbankFeatures(nn.Module):
         max_len = x.size(-1)
         mask = torch.arange(max_len).to(x.device)
         mask = mask.expand(x.size(0), max_len) >= seq_len.unsqueeze(1)
-        x = x.masked_fill(mask.unsqueeze(1).type(torch.bool).to(device=x.device), self.pad_value)
+        x = x.masked_fill(
+            mask.unsqueeze(1).type(torch.bool).to(device=x.device), self.pad_value
+        )
         del mask
         pad_to = self.pad_to
         if pad_to == "max":
-            x = nn.functional.pad(x, (0, self.max_length - x.size(-1)), value=self.pad_value)
+            x = nn.functional.pad(
+                x, (0, self.max_length - x.size(-1)), value=self.pad_value
+            )
         elif pad_to > 0:
             pad_amt = x.size(-1) % pad_to
             if pad_amt != 0:
